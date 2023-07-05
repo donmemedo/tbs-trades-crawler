@@ -12,6 +12,6 @@ ENV PYTHONPATH="$PYTHONPATH:/app"
 
 EXPOSE 8000
 
-WORKDIR /app/src
+WORKDIR /app
 
 CMD python main.py
