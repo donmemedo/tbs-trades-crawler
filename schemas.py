@@ -1,33 +1,16 @@
 from pydantic import BaseModel, validator
 from datetime import date, datetime
 from config import setting
-from typing import List, Any
+from typing import List, Any, Optional
 from fastapi import Query
 
 
 class TradesIn(BaseModel):
-    start_date: date
-    end_date: date
+    trade_date: date = Query(alias="TradeDate")
+    cookie: str = Query(alias="Cookie")
 
-
-    @validator("start_date", pre=True)
-    def parse_date(cls, value):
-        return datetime.strptime(
-            value, 
-            setting.DATE_STRING
-        ).date()
-
-
-    @validator("end_date", pre=True)
-    def parse_date(cls, value):
-        return datetime.strptime(
-            value, 
-            setting.DATE_STRING
-        ).date()
-    
 
 class ResponseOut(BaseModel):
-    timeGenerated: date
+    timeGenerated: datetime
     result: List[TradesIn] = List[Any]
-    error: str = Query("nothing")
-
+    error: str
