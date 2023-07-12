@@ -16,7 +16,8 @@ import messages
 from config import setting, tbs_trades_header, tbs_trades_payload
 from database import get_database
 from logger import log_config, logger
-from schemas import ResponseOut, TradesIn
+from schemas import ResponseOut, TradesIn, DeleteTradesIn
+
 
 app = FastAPI(
     version=setting.VERSION,
@@ -136,6 +137,38 @@ async def trades(
         return ResponseOut(
             error=messages.NO_TRADES_ERROR, result=[], timeGenerated=datetime.now()
         )
+
+
+@app.delete("/trades")
+def delete_trades(
+    args: DeleteTradesIn = Depends(DeleteTradesIn),
+    db: MongoClient = Depends(get_database)
+):
+    try:
+        db.trades.delete_many(
+            {
+                "TradeDate": {
+                    "$regex": args.trade_date.strftime(setting.DATE_STRING)
+                }
+            }
+        )
+        logger.info(f"All trades has been deleted for {args.trade_date}")
+        return ResponseOut(error="داده‌ها با موفقیت از سیستم حذف شد",
+                           result=[],
+                           timeGenerated=datetime.now()
+                           )
+    except Exception:
+        logger.error("Error while delete data in database")
+        logger.exception("Error while delete data in database")
+        return jsonable_encoder(JSONResponse(
+            status_code=500,
+            content=ResponseOut(
+                error=messages.HTTP_500_ERROR,
+                result=[],
+                timeGenerated=datetime.now()
+            )
+        )
+    )
 
 
 if __name__ == "__main__":

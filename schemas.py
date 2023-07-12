@@ -10,6 +10,10 @@ class TradesIn(BaseModel):
     cookie: str = Query(alias="Cookie")
 
 
+class DeleteTradesIn(BaseModel):
+    trade_date: date = Query(alias="TradeDate")
+
+
 class ResponseOut(BaseModel):
     timeGenerated: datetime
     result: List[TradesIn] = List[Any]
