@@ -1,11 +1,14 @@
 import datetime
 import json
+import secrets
 from datetime import datetime
 from logging.config import dictConfig
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from typing import Annotated
 
 import requests
 import uvicorn
-from fastapi import Depends, FastAPI, status
+from fastapi import Depends, FastAPI, status, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,6 +29,8 @@ app = FastAPI(
     redoc_url=setting.FASTAPI_REDOC,
 )
 
+security = HTTPBasic()
+
 origins = [setting.ORIGINS]
 
 app.add_middleware(
@@ -37,9 +42,33 @@ app.add_middleware(
 )
 
 
+def get_current_username(
+    credentials: Annotated[HTTPBasicCredentials, Depends(security)]
+):
+    current_username_bytes = credentials.username.encode("utf8")
+    correct_username_bytes = b"nastaran"
+    is_correct_username = secrets.compare_digest(
+        current_username_bytes, correct_username_bytes
+    )
+    current_password_bytes = credentials.password.encode("utf8")
+    correct_password_bytes = b"n@st@r@n"
+    is_correct_password = secrets.compare_digest(
+        current_password_bytes, correct_password_bytes
+    )
+    if not (is_correct_username and is_correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+
 @app.get("/get-trade_records", tags=["Trades"])
 async def trades(
-        args: TradesIn = Depends(TradesIn), db: MongoClient = Depends(get_database)
+        args: TradesIn = Depends(TradesIn),
+        db: MongoClient = Depends(get_database),
+        user: str = Depends(get_current_username)
 ):
     try:
         response = requests.post(
@@ -142,7 +171,8 @@ async def trades(
 @app.delete("/trades")
 def delete_trades(
     args: DeleteTradesIn = Depends(DeleteTradesIn),
-    db: MongoClient = Depends(get_database)
+    db: MongoClient = Depends(get_database),
+    user: str = Depends(get_current_username)
 ):
     try:
         db.trades.delete_many(
