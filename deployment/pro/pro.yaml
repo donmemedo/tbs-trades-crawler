@@ -17,7 +17,7 @@ data:
   ISSUER: "https://idp.tavanabroker.ir"
   SPLUNK_HOST: "log.tech1a.co"
   SPLUNK_PORT: "6141"
-  FASTAPI_DOCS: ""
+  FASTAPI_DOCS: "/docs"
   FASTAPI_REDOC: ""
 ---
 apiVersion: apps/v1
