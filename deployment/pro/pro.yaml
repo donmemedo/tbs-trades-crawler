@@ -66,6 +66,10 @@ metadata:
   name: tbs-trades-crawler
 spec:
   ingressClassName: nginx
+  tls:
+  - hosts:
+    -  tbs-trades-crawler.tavanabroker.ir
+    secretName: tavanaco-ir
   rules:
     - host: tbs-trades-crawler.tavanabroker.ir
       http:
