@@ -10,6 +10,10 @@ class TradesIn(BaseModel):
     cookie: str = Query(alias="Cookie")
 
 
+class PortfolioIn(BaseModel):
+    cookie: str = Query(alias="Cookie")
+
+
 class DeleteTradesIn(BaseModel):
     trade_date: date = Query(alias="TradeDate")
 
