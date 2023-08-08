@@ -303,6 +303,130 @@ def delete_trades(
     )
 
 
+@app.get("/backup/get-trade_records", tags=["Backups"])
+async def backup_trades(
+        args: TradesIn = Depends(TradesIn),
+        db: MongoClient = Depends(get_database),
+        user: str = Depends(get_current_username)
+):
+    try:
+        response = requests.post(
+            setting.TBS_TRADES_URL,
+            headers=tbs_trades_header(args.cookie),
+            data=tbs_trades_payload(
+                args.trade_date.year, args.trade_date.month, args.trade_date.day
+            ),
+        )
+
+        response.raise_for_status()
+
+        if "<html>".encode() in response.content:
+            raise Exception()
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=599,
+            content=jsonable_encoder(
+                ResponseOut(
+                    error=messages.CONNECTION_FAILED,
+                    result=[],
+                    timeGenerated=datetime.now(),
+                )
+            ),
+        )
+
+    response = json.loads(response.content)
+    logger.info(f"On {args.trade_date}, number of records are: {response.get('total')}")
+
+    if response.get("total", 0) != 0:
+        trade_records = response.get("data")
+        duplicates = 0
+        buys = 0
+        sells = 0
+        inserted = []
+        try:
+            for trade in trade_records:
+                # total commission
+                trade["TotalCommission"] = trade["TradeItemTotalCommission"]
+
+                # set trade type
+                if trade["TradeSideTitle"] == "فروش":
+                    trade["TradeType"] = 2
+                    sells += 1
+                else:
+                    trade["TradeType"] = 1
+                    buys += 1
+
+                # set ISIN
+                trade["MarketInstrumentISIN"] = trade["ISIN"]
+
+                # set symbol
+                trade["TradeSymbol"] = trade["Symbol"]
+                try:
+                    db.tradesbackup.insert_one(trade)
+                    inserted.append(trade)
+                except DuplicateKeyError as dup_error:
+                    logger.info("Duplicate record", {"error": dup_error})
+                    duplicates += 1
+                    if trade["TradeType"] == 2:
+                        sells -= 1
+                    else:
+                        buys -= 1
+                logger.info(f"Successfully get trade records of  {args.trade_date}")
+
+            result = {}
+            # if results:
+            result["InsertedTradeCount"] = len(trade_records) - duplicates
+            result["errorCode"] = None
+            result["errorMessage"] = None
+            result["InsertedBuyTradeCount"] = buys
+            result["InsertedSellTradeCount"] = sells
+            result["InsertedTradeCodeCount"] = len({v['TradeCode']: v for v in inserted})
+            result["TradeDate"] = JalaliDatetime.now().date().isoformat()
+            resp = {
+                "result": result,
+                "GeneratedDateTime": datetime.now(),
+                "error": {
+                    "message": "Null",
+                    "code": "Null",
+                },
+            }
+
+            return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp))
+
+            return JSONResponse(
+                    status_code=status.HTTP_201_CREATED,
+                    content=jsonable_encoder(
+                        ResponseOut(
+                            error=messages.SUCCESSFULLY_WRITE_DATA,
+                            result=[],
+                            timeGenerated=datetime.now(),
+                        )
+                    ),
+                )
+
+        except BulkWriteError as e:
+            for error in e.details.get("writeErrors"):
+                if error.get("code") != 11000:
+                    logger.error("Bulk Write Error")
+                    logger.exception("Bulk Write Error")
+                    return JSONResponse(
+                        status_code=status.HTTP_418_IM_A_TEAPOT,
+                        content=jsonable_encoder(
+                            ResponseOut(
+                                error=messages.BULK_WRITE_ERROR,
+                                result=[],
+                                timeGenerated=datetime.now(),
+                            )
+                        ),
+                    )
+    else:
+        logger.info("No trade record found. List is empty.")
+        return ResponseOut(
+            error=messages.NO_TRADES_ERROR, result=[], timeGenerated=datetime.now()
+        )
+
+
 if __name__ == "__main__":
     uvicorn.run(
         app="main:app",
