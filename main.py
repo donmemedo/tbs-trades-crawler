@@ -13,13 +13,13 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pymongo import MongoClient
-from pymongo.errors import BulkWriteError
+from pymongo.errors import BulkWriteError,DuplicateKeyError
 
 import messages
-from config import setting, tbs_trades_header, tbs_trades_payload
+from config import setting, tbs_trades_header, tbs_trades_payload, tbs_portfolio_header, tbs_portfolio_params
 from database import get_database
 from logger import log_config, logger
-from schemas import ResponseOut, TradesIn, DeleteTradesIn
+from schemas import ResponseOut, TradesIn, DeleteTradesIn, PortfolioIn
 
 
 app = FastAPI(
@@ -165,6 +165,105 @@ async def trades(
         logger.info("No trade record found. List is empty.")
         return ResponseOut(
             error=messages.NO_TRADES_ERROR, result=[], timeGenerated=datetime.now()
+        )
+
+
+@app.get("/get-private-portfolios", tags=["Portfolio"], response_model=None)
+async def get_private_portfolios(
+        args: PortfolioIn = Depends(PortfolioIn),
+        db: MongoClient = Depends(get_database),
+        user: str = Depends(get_current_username)
+):
+    try:
+        response = requests.get(
+            setting.TBS_PORTFOLIOS_URL,
+            params=tbs_portfolio_params(),
+            headers=tbs_portfolio_header(args.cookie),
+        )
+
+        response.raise_for_status()
+
+        if "<html>".encode() in response.content:
+            raise Exception()
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=599,
+            content=jsonable_encoder(
+                ResponseOut(
+                    error=messages.CONNECTION_FAILED,
+                    result=[],
+                    timeGenerated=datetime.now(),
+                )
+            ),
+        )
+
+    response = json.loads(response.content)
+    logger.info(f"Number of records are: {response.get('total')}")
+
+    if response.get("total", 0) != 0:
+        records = response.get("data")
+        results = []
+        for record in records:
+            try:
+                db.portfolio.insert_one(record)
+                logger.info(f"Successfully get Private Portfolios in {datetime.now().isoformat()} ")
+            except DuplicateKeyError as e:
+                if e.details.get("code") == 11000:
+                    logger.error(f"Duplicate Key Error for {record.get('Title')}")
+                    db.portfolio.delete_one({"TradeCodes": record.get('TradeCodes')})
+                    db.portfolio.insert_one(record)
+                    record.pop("_id")
+                    results.append(record)
+
+                    logger.info(f"Record {record.get('Title')} was Updated")
+                else:
+                    logger.error("Bulk Write Error")
+                    logger.exception("Bulk Write Error")
+                    return JSONResponse(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        content=jsonable_encoder(
+                            ResponseOut(
+                                error=messages.BULK_WRITE_ERROR,
+                                result=[],
+                                timeGenerated=datetime.now(),
+                            )
+                        ),
+                    )
+        result = {}
+        if results:
+            result["pagedData"] = results
+            result["errorCode"] = None
+            result["errorMessage"] = None
+            result["totalCount"] = len(results)
+            resp = {
+                "result": result,
+                "timeGenerated": datetime.now(),
+                "error": {
+                    "message": "Null",
+                    "code": "Null",
+                },
+            }
+
+            return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp))
+        else:
+            result["errorCode"] = None
+            result["errorMessage"] = messages.SUCCESSFULLY_WRITE_DATA
+            result["totalCount"] = len(records)
+            resp = {
+                "result": result,
+                "timeGenerated": datetime.now(),
+                "error": {
+                    "message": messages.SUCCESSFULLY_WRITE_DATA,
+                    "code": "Null",
+                },
+            }
+
+            return JSONResponse(status_code=status.HTTP_201_CREATED, content=jsonable_encoder(resp))
+    else:
+        logger.info("No records found. List is empty.")
+        return ResponseOut(
+            error=messages.NO_RECORDS_ERROR, result=[], timeGenerated=datetime.now()
         )
 
 

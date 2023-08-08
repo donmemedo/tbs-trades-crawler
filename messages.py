@@ -1,4 +1,5 @@
 NO_TRADES_ERROR = "هیچ معامله‌ای در این روز انجام نشده است"
+NO_RECORDS_ERROR = "هیچ داده‌ای موجود نیست"
 HTTP_500_ERROR = "خطای سمت سرور"
 CONNECTION_FAILED = "خطای وصل شدن به سیستم تدبیر"
 SUCCESSFULLY_WRITE_DATA = "داده‌ها معامله با موفقیت در دیتابیس ذخیره شد"
