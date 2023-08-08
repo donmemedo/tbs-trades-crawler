@@ -13,10 +13,9 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pymongo import MongoClient
-from pymongo.errors import BulkWriteError,DuplicateKeyError
-
+from pymongo.errors import BulkWriteError, DuplicateKeyError
 import messages
-from config import setting, tbs_trades_header, tbs_trades_payload, tbs_portfolio_header, tbs_portfolio_params
+from config import *
 from database import get_database
 from logger import log_config, logger
 from schemas import ResponseOut, TradesIn, DeleteTradesIn, PortfolioIn
@@ -424,6 +423,136 @@ async def backup_trades(
         logger.info("No trade record found. List is empty.")
         return ResponseOut(
             error=messages.NO_TRADES_ERROR, result=[], timeGenerated=datetime.now()
+        )
+
+
+@app.get("/backups/get-customers", tags=["Backups"], response_model=None)
+async def get_customers(
+        args: PortfolioIn = Depends(PortfolioIn),
+        db: MongoClient = Depends(get_database),
+        user: str = Depends(get_current_username)
+):
+    try:
+        response = requests.get(
+            setting.TBS_CUSTOMERS_URL,
+            params=tbs_customer_params(),
+            headers=tbs_customer_header(args.cookie),
+        )
+
+        response.raise_for_status()
+
+        if "<html>".encode() in response.content:
+            raise Exception()
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=599,
+            content=jsonable_encoder(
+                ResponseOut(
+                    error=messages.CONNECTION_FAILED,
+                    result=[],
+                    timeGenerated=datetime.now(),
+                )
+            ),
+        )
+
+    response = json.loads(response.content)
+    logger.info(f"Number of records are: {response.get('total')}")
+
+    if response.get("total", 0) != 0:
+        records = response.get("data")
+        results = []
+        privates, legals, newp, newl, updp, updl = 0,0,0,0,0,0
+        # legals = 0
+        for record in records:
+            # set trade type
+            if record["PartyTypeTitle"] == "حقیقی":
+                record["CustomerType"] = 1
+                privates += 1
+            else:
+                record["CustomerType"] = 2
+                legals += 1
+
+            try:
+                db.customersbackup.insert_one(record)
+                if record["CustomerType"] == 1:
+                    newp += 1
+                else:
+                    newl += 1
+                logger.info(f"Successfully get Customers in {datetime.now().isoformat()} ")
+            except DuplicateKeyError as e:
+                if e.details.get("code") == 11000:
+                    logger.error(f"Duplicate Key Error for {record.get('Title')}")
+                    record.pop("_id")
+                    if db.customersbackup.find_one({"TradeCodes": record.get('TradeCodes')},{"_id": False}) != record:
+                        db.customersbackup.delete_one({"TradeCodes": record.get('TradeCodes')})
+                        db.customersbackup.insert_one(record)
+                        if record["CustomerType"] == 1:
+                            updp += 1
+                        else:
+                            updl += 1
+                        record.pop("_id")
+                        results.append(record)
+                        logger.info(f"Record {record.get('Title')} was Updated")
+                else:
+                    logger.error("Bulk Write Error")
+                    logger.exception("Bulk Write Error")
+                    return JSONResponse(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        content=jsonable_encoder(
+                            ResponseOut(
+                                error=messages.BULK_WRITE_ERROR,
+                                result=[],
+                                timeGenerated=datetime.now(),
+                            )
+                        ),
+                    )
+        result = {}
+        if results:
+            result["pagedData"] = results
+            result["errorCode"] = None
+            result["errorMessage"] = None
+            result["AllCustomerCount"] = len(records)
+            result["AllPrivateCustomerCount"] = privates
+            result["AllLegalCustomerCount"] = legals
+            result["AllNewPrivateCustomerCount"] = newp
+            result["AllNewLegalCustomerCount"] = newl
+            result["AllUpdatedPrivateCustomerCount"] = updp
+            result["AllUpdatedLegalCustomerCount"] = updl
+            result["Date"] = JalaliDatetime.now().date().isoformat()
+            resp = {
+                "result": result,
+                "GeneratedDateTime": datetime.now(),
+                "error": {
+                    "message": "Null",
+                    "code": "Null",
+                },
+            }
+
+            return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp))
+        else:
+            result["errorCode"] = None
+            result["errorMessage"] = messages.SUCCESSFULLY_WRITE_DATA
+            result["AllCustomersCount"] = len(records)
+            result["AllPrivateCustomerCount"] = privates
+            result["AllLegalCustomerCount"] = legals
+            result["AllNewPrivateCustomerCount"] = newp
+            result["AllNewLegalCustomerCount"] = newl
+            result["Date"] = JalaliDatetime.now().date().isoformat()
+            resp = {
+                "result": result,
+                "GeneratedDateTime": datetime.now(),
+                "error": {
+                    "message": messages.SUCCESSFULLY_WRITE_DATA,
+                    "code": "Null",
+                },
+            }
+
+            return JSONResponse(status_code=status.HTTP_201_CREATED, content=jsonable_encoder(resp))
+    else:
+        logger.info("No records found. List is empty.")
+        return ResponseOut(
+            error=messages.NO_RECORDS_ERROR, result=[], timeGenerated=datetime.now()
         )
 
 
