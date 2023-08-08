@@ -20,7 +20,7 @@ from config import setting, tbs_trades_header, tbs_trades_payload, tbs_portfolio
 from database import get_database
 from logger import log_config, logger
 from schemas import ResponseOut, TradesIn, DeleteTradesIn, PortfolioIn
-
+from khayyam import JalaliDatetime
 
 app = FastAPI(
     version=setting.VERSION,
@@ -235,10 +235,12 @@ async def get_private_portfolios(
             result["pagedData"] = results
             result["errorCode"] = None
             result["errorMessage"] = None
-            result["totalCount"] = len(results)
+            result["AllEditedPrivatePortfolioCount"] = len(results)
+            result["AllNewPrivatePortfolioCount"] = len(records) - len(results)
+            result["Date"] = JalaliDatetime.now().date()
             resp = {
                 "result": result,
-                "timeGenerated": datetime.now(),
+                "GeneratedDateTime": datetime.now(),
                 "error": {
                     "message": "Null",
                     "code": "Null",
@@ -249,10 +251,11 @@ async def get_private_portfolios(
         else:
             result["errorCode"] = None
             result["errorMessage"] = messages.SUCCESSFULLY_WRITE_DATA
-            result["totalCount"] = len(records)
+            result["AllPrivatePortfolioCount"] = len(records)
+            result["Date"] = JalaliDatetime.now().date()
             resp = {
                 "result": result,
-                "timeGenerated": datetime.now(),
+                "GeneratedDateTime": datetime.now(),
                 "error": {
                     "message": messages.SUCCESSFULLY_WRITE_DATA,
                     "code": "Null",
