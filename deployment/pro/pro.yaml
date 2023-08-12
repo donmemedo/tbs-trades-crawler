@@ -64,6 +64,14 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: tbs-trades-crawler
+  annotations:
+    nginx.ingress.kubernetes.io/server-alias: "tbs-trades-crawler.tavanaco.ir"
+    nginx.ingress.kubernetes.io/whitelist-source-range: "172.23.X.X/16,10.x.x.x/8,172.24.x.x/16,172.252.189.224/29"
+    nginx.org/server-snippets: |
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-Proto $scheme;
+
 spec:
   ingressClassName: nginx
   tls:
