@@ -66,7 +66,7 @@ metadata:
   name: tbs-trades-crawler
   annotations:
     nginx.ingress.kubernetes.io/server-alias: "tbs-trades-crawler.tavanaco.ir"
-    nginx.ingress.kubernetes.io/whitelist-source-range: "10.x.x.x/8,10.233.109.81,178.252.x.x/16,172.23.X.X/16,172.24.x.x/16,172.252.189.224/29"
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,178.252.0.0/16,172.23.0.0/16,172.24.0.0/16,172.252.189.224/29"
     nginx.org/server-snippets: |
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
