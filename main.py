@@ -483,7 +483,7 @@ async def get_customers(
             record["Username"] = record["UserName"]
             record["Mobile"] = record["Phones"]
             try:
-                db.customerssbackup.insert_one(record)
+                db.customers.insert_one(record)
                 if record["CustomerType"] == 1:
                     newp += 1
                 else:
@@ -493,9 +493,9 @@ async def get_customers(
                 if e.details.get("code") == 11000:
                     logger.error(f"Duplicate Key Error for {record.get('Title')}")
                     record.pop("_id")
-                    if db.customerssbackup.find_one({"TradeCodes": record.get('TradeCodes')},{"_id": False}) != record:
-                        db.customerssbackup.delete_one({"TradeCodes": record.get('TradeCodes')})
-                        db.customerssbackup.insert_one(record)
+                    if db.customers.find_one({"PAMCode": record.get('PAMCode')},{"_id": False}) != record:
+                        db.customers.delete_one({"PAMCode": record.get('PAMCode')})
+                        db.customers.insert_one(record)
                         if record["CustomerType"] == 1:
                             updp += 1
                         else:
