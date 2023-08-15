@@ -481,7 +481,8 @@ async def get_customers(
             record["BourseCode"] = record["BourseCodes"]
             record["Referer"] = record["RefererTitle"]
             record["Username"] = record["UserName"]
-            record["Mobile"] = record["Phones"]
+            if not record["Mobile"]:
+                record["Mobile"] = record["Phones"]
             try:
                 db.customers.insert_one(record)
                 if record["CustomerType"] == 1:
@@ -491,7 +492,7 @@ async def get_customers(
                 logger.info(f"Successfully get Customers in {datetime.now().isoformat()} ")
             except DuplicateKeyError as e:
                 if e.details.get("code") == 11000:
-                    logger.error(f"Duplicate Key Error for {record.get('Title')}")
+                    logger.error(f"Duplicate Key Error for {record.get('FirstName')} {record.get('LastName')}")
                     record.pop("_id")
                     if db.customers.find_one({"PAMCode": record.get('PAMCode')},{"_id": False}) != record:
                         db.customers.delete_one({"PAMCode": record.get('PAMCode')})
@@ -502,7 +503,7 @@ async def get_customers(
                             updl += 1
                         record.pop("_id")
                         results.append(record)
-                        logger.info(f"Record {record.get('Title')} was Updated")
+                        logger.info(f"Record {record.get('FirstName')} {record.get('LastName')} was Updated")
                 else:
                     logger.error("Bulk Write Error")
                     logger.exception("Bulk Write Error")
