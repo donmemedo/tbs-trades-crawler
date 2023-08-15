@@ -42,4 +42,4 @@ log_config = {
 
 
 dictConfig(log_config)
-logger = logging.getLogger('urllib3')
+logger = logging.getLogger('crawlers')
