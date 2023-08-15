@@ -481,7 +481,8 @@ async def get_customers(
             record["BourseCode"] = record["BourseCodes"]
             record["Referer"] = record["RefererTitle"]
             record["Username"] = record["UserName"]
-            record["Mobile"] = record["Phones"]
+            if not record["Mobile"]:
+                record["Mobile"] = record["Phones"]
             try:
                 db.customers.insert_one(record)
                 if record["CustomerType"] == 1:
