@@ -1,13 +1,17 @@
-from pydantic import BaseModel, validator
 from datetime import date, datetime
-from config import setting
 from typing import List, Any, Optional
+
 from fastapi import Query
+from pydantic import BaseModel
 
 
 class TradesIn(BaseModel):
     trade_date: date = Query(alias="TradeDate")
-    cookie: str = Query(alias="Cookie")
+
+
+class CustomersIn(BaseModel):
+    register_date: Optional[date] = Query(alias="RegisterDate", default=None)
+    modified_date: Optional[date] = Query(alias="ModifiedDate", default=None)
 
 
 class PortfolioIn(BaseModel):
@@ -22,3 +26,7 @@ class ResponseOut(BaseModel):
     timeGenerated: datetime
     result: List[TradesIn] = List[Any]
     error: str
+
+
+class CookieIn(BaseModel):
+    cookie_value: str

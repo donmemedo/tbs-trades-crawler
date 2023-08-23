@@ -1,9 +1,7 @@
 import datetime
 import json
 import secrets
-from datetime import datetime
 from logging.config import dictConfig
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Annotated
 
 import requests
@@ -12,14 +10,17 @@ from fastapi import Depends, FastAPI, status, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from khayyam import JalaliDatetime
 from pymongo import MongoClient
 from pymongo.errors import BulkWriteError, DuplicateKeyError
+
 import messages
 from config import *
 from database import get_database
 from logger import log_config, logger
-from schemas import ResponseOut, TradesIn, DeleteTradesIn, PortfolioIn
-from khayyam import JalaliDatetime
+from schemas import *
+from statics import statics
 
 app = FastAPI(
     version=setting.VERSION,
@@ -42,7 +43,7 @@ app.add_middleware(
 
 
 def get_current_username(
-    credentials: Annotated[HTTPBasicCredentials, Depends(security)]
+        credentials: Annotated[HTTPBasicCredentials, Depends(security)]
 ):
     current_username_bytes = credentials.username.encode("utf8")
     correct_username_bytes = b"nastaran"
@@ -63,8 +64,28 @@ def get_current_username(
     return credentials.username
 
 
-@app.get("/get-trade_records", tags=["Trades"])
-async def trades(
+class Cookie:
+    def __init__(self, cookie_value=None):
+        self.cookie = cookie_value
+
+
+cookie = Cookie()
+
+
+@app.post("/cookie", tags=["Cookie"])
+async def set_cookie(args: CookieIn = Depends(CookieIn)):
+    cookie.cookie = args.cookie_value
+
+    return cookie.cookie
+
+
+@app.get("/cookie", tags=["Cookie"])
+async def get_cookie():
+    return cookie.cookie
+
+
+@app.post("/trades", tags=["Trades"])
+async def get_trades(
         args: TradesIn = Depends(TradesIn),
         db: MongoClient = Depends(get_database),
         user: str = Depends(get_current_username)
@@ -72,7 +93,7 @@ async def trades(
     try:
         response = requests.post(
             setting.TBS_TRADES_URL,
-            headers=tbs_trades_header(args.cookie),
+            headers=tbs_trades_header(cookie.cookie),
             data=tbs_trades_payload(
                 args.trade_date.year, args.trade_date.month, args.trade_date.day
             ),
@@ -167,7 +188,7 @@ async def trades(
         )
 
 
-@app.get("/get-private-portfolios", tags=["Portfolio"], response_model=None)
+@app.post("/portfolios", tags=["Portfolio"], response_model=None)
 async def get_private_portfolios(
         args: PortfolioIn = Depends(PortfolioIn),
         db: MongoClient = Depends(get_database),
@@ -269,11 +290,11 @@ async def get_private_portfolios(
         )
 
 
-@app.delete("/trades")
+@app.delete("/trades", tags=["Trades"])
 def delete_trades(
-    args: DeleteTradesIn = Depends(DeleteTradesIn),
-    db: MongoClient = Depends(get_database),
-    user: str = Depends(get_current_username)
+        args: DeleteTradesIn = Depends(DeleteTradesIn),
+        db: MongoClient = Depends(get_database),
+        user: str = Depends(get_current_username)
 ):
     try:
         db.trades.delete_many(
@@ -299,150 +320,36 @@ def delete_trades(
                 timeGenerated=datetime.now()
             )
         )
-    )
-
-
-@app.get("/backups/get-trade_records", tags=["Backups"])
-async def backup_trades(
-        args: TradesIn = Depends(TradesIn),
-        db: MongoClient = Depends(get_database),
-        user: str = Depends(get_current_username)
-):
-    try:
-        response = requests.post(
-            setting.TBS_TRADES_URL,
-            headers=tbs_trades_header(args.cookie),
-            data=tbs_trades_payload(
-                args.trade_date.year, args.trade_date.month, args.trade_date.day
-            ),
-        )
-
-        response.raise_for_status()
-
-        if "<html>".encode() in response.content:
-            raise Exception()
-
-    except Exception as e:
-        return JSONResponse(
-            status_code=599,
-            content=jsonable_encoder(
-                ResponseOut(
-                    error=messages.CONNECTION_FAILED,
-                    result=[],
-                    timeGenerated=datetime.now(),
-                )
-            ),
-        )
-
-    response = json.loads(response.content)
-    logger.info(f"On {args.trade_date}, number of records are: {response.get('total')}")
-
-    if response.get("total", 0) != 0:
-        trade_records = response.get("data")
-        duplicates = 0
-        buys = 0
-        sells = 0
-        inserted = []
-        try:
-            for trade in trade_records:
-                # total commission
-                trade["TotalCommission"] = trade["TradeItemTotalCommission"]
-
-                # set trade type
-                if trade["TradeSideTitle"] == "فروش":
-                    trade["TradeType"] = 2
-                    sells += 1
-                else:
-                    trade["TradeType"] = 1
-                    buys += 1
-
-                # set ISIN
-                trade["MarketInstrumentISIN"] = trade["ISIN"]
-
-                # set symbol
-                trade["TradeSymbol"] = trade["Symbol"]
-                try:
-                    db.tradesbackup.insert_one(trade)
-                    inserted.append(trade)
-                except DuplicateKeyError as dup_error:
-                    logger.info("Duplicate record", {"error": dup_error})
-                    duplicates += 1
-                    if trade["TradeType"] == 2:
-                        sells -= 1
-                    else:
-                        buys -= 1
-                logger.info(f"Successfully get trade records of  {args.trade_date}")
-
-            result = {}
-            # if results:
-            result["InsertedTradeCount"] = len(trade_records) - duplicates
-            result["errorCode"] = None
-            result["errorMessage"] = None
-            result["InsertedBuyTradeCount"] = buys
-            result["InsertedSellTradeCount"] = sells
-            result["InsertedTradeCodeCount"] = len({v['TradeCode']: v for v in inserted})
-            result["TradeDate"] = JalaliDatetime.now().date().isoformat()
-            resp = {
-                "result": result,
-                "GeneratedDateTime": datetime.now(),
-                "error": {
-                    "message": "Null",
-                    "code": "Null",
-                },
-            }
-
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp))
-
-            return JSONResponse(
-                    status_code=status.HTTP_201_CREATED,
-                    content=jsonable_encoder(
-                        ResponseOut(
-                            error=messages.SUCCESSFULLY_WRITE_DATA,
-                            result=[],
-                            timeGenerated=datetime.now(),
-                        )
-                    ),
-                )
-
-        except BulkWriteError as e:
-            for error in e.details.get("writeErrors"):
-                if error.get("code") != 11000:
-                    logger.error("Bulk Write Error")
-                    logger.exception("Bulk Write Error")
-                    return JSONResponse(
-                        status_code=status.HTTP_418_IM_A_TEAPOT,
-                        content=jsonable_encoder(
-                            ResponseOut(
-                                error=messages.BULK_WRITE_ERROR,
-                                result=[],
-                                timeGenerated=datetime.now(),
-                            )
-                        ),
-                    )
-    else:
-        logger.info("No trade record found. List is empty.")
-        return ResponseOut(
-            error=messages.NO_TRADES_ERROR, result=[], timeGenerated=datetime.now()
         )
 
 
-@app.get("/backups/get-customers", tags=["Backups"], response_model=None)
+@app.post("/customers", tags=["Customers"], response_model=None)
 async def get_customers(
-        args: PortfolioIn = Depends(PortfolioIn),
+        args: CustomersIn = Depends(CustomersIn),
         db: MongoClient = Depends(get_database),
         user: str = Depends(get_current_username)
 ):
+    if args.register_date:
+        register_date = args.register_date.strftime(statics.DATE_FORMAT)
+    else:
+        register_date = None
+
+    if args.modified_date:
+        modified_date = args.modified_date.strftime(statics.DATE_FORMAT)
+    else:
+        modified_date = None
+
     try:
         response = requests.get(
             setting.TBS_CUSTOMERS_URL,
-            params=tbs_customer_params(),
-            headers=tbs_customer_header(args.cookie),
+            headers=tbs_customer_header(cookie.cookie),
+            params=tbs_customer_filter_params(register_date, modified_date)
         )
 
         response.raise_for_status()
 
         if "<html>".encode() in response.content:
-            raise Exception()
+            raise Exception("Connection Failed")
 
     except Exception as e:
         return JSONResponse(
@@ -462,16 +369,17 @@ async def get_customers(
     if response.get("total", 0) != 0:
         records = response.get("data")
         results = []
-        privates, legals, newp, newl, updp, updl = 0,0,0,0,0,0
-        # legals = 0
+
+        naturals = legals = naturals_inserted_counts = legals_inserted_counts = natural_updated_counts = legal_updated_counts = 0
+
         for record in records:
-            # set trade type
-            if record["PartyTypeTitle"] == "حقیقی":
+            if record["PartyTypeTitle"] == statics.NATURAL_USER:
                 record["CustomerType"] = 1
-                privates += 1
+                naturals += 1
             else:
                 record["CustomerType"] = 2
                 legals += 1
+
             record["BrokerBranch"] = record["BrokerBranchTitle"]
             record["DetailLedgerCode"] = record["AccountCodes"]
             record["Email"] = record["UserEmail"]
@@ -481,26 +389,29 @@ async def get_customers(
             record["BourseCode"] = record["BourseCodes"]
             record["Referer"] = record["RefererTitle"]
             record["Username"] = record["UserName"]
+
             if not record["Mobile"]:
                 record["Mobile"] = record["Phones"]
             try:
                 db.customers.insert_one(record)
+
                 if record["CustomerType"] == 1:
-                    newp += 1
+                    naturals_inserted_counts += 1
                 else:
-                    newl += 1
+                    legals_inserted_counts += 1
+
                 logger.info(f"Successfully get Customers in {datetime.now().isoformat()} ")
             except DuplicateKeyError as e:
                 if e.details.get("code") == 11000:
                     logger.error(f"Duplicate Key Error for {record.get('FirstName')} {record.get('LastName')}")
                     record.pop("_id")
-                    if db.customers.find_one({"PAMCode": record.get('PAMCode')},{"_id": False}) != record:
+                    if db.customers.find_one({"PAMCode": record.get('PAMCode')}, {"_id": False}) != record:
                         db.customers.delete_one({"PAMCode": record.get('PAMCode')})
                         db.customers.insert_one(record)
                         if record["CustomerType"] == 1:
-                            updp += 1
+                            natural_updated_counts += 1
                         else:
-                            updl += 1
+                            legal_updated_counts += 1
                         record.pop("_id")
                         results.append(record)
                         logger.info(f"Record {record.get('FirstName')} {record.get('LastName')} was Updated")
@@ -517,19 +428,22 @@ async def get_customers(
                             )
                         ),
                     )
+
         result = {}
+
         if results:
             result["pagedData"] = results
             result["errorCode"] = None
             result["errorMessage"] = None
             result["AllCustomerCount"] = len(records)
-            result["AllPrivateCustomerCount"] = privates
+            result["AllPrivateCustomerCount"] = naturals
             result["AllLegalCustomerCount"] = legals
-            result["AllNewPrivateCustomerCount"] = newp
-            result["AllNewLegalCustomerCount"] = newl
-            result["AllUpdatedPrivateCustomerCount"] = updp
-            result["AllUpdatedLegalCustomerCount"] = updl
+            result["AllNewPrivateCustomerCount"] = naturals_inserted_counts
+            result["AllNewLegalCustomerCount"] = legals_inserted_counts
+            result["AllUpdatedPrivateCustomerCount"] = natural_updated_counts
+            result["AllUpdatedLegalCustomerCount"] = legal_updated_counts
             result["Date"] = JalaliDatetime.now().date().isoformat()
+
             resp = {
                 "result": result,
                 "GeneratedDateTime": datetime.now(),
@@ -544,10 +458,10 @@ async def get_customers(
             result["errorCode"] = None
             result["errorMessage"] = messages.SUCCESSFULLY_WRITE_DATA
             result["AllCustomersCount"] = len(records)
-            result["AllPrivateCustomerCount"] = privates
+            result["AllPrivateCustomerCount"] = naturals
             result["AllLegalCustomerCount"] = legals
-            result["AllNewPrivateCustomerCount"] = newp
-            result["AllNewLegalCustomerCount"] = newl
+            result["AllNewPrivateCustomerCount"] = naturals_inserted_counts
+            result["AllNewLegalCustomerCount"] = legals_inserted_counts
             result["Date"] = JalaliDatetime.now().date().isoformat()
             resp = {
                 "result": result,
@@ -557,12 +471,13 @@ async def get_customers(
                     "code": "Null",
                 },
             }
-
             return JSONResponse(status_code=status.HTTP_201_CREATED, content=jsonable_encoder(resp))
     else:
         logger.info("No records found. List is empty.")
         return ResponseOut(
-            error=messages.NO_RECORDS_ERROR, result=[], timeGenerated=datetime.now()
+            error=messages.NO_RECORDS_ERROR,
+            result=[],
+            timeGenerated=datetime.now()
         )
 
 
