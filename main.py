@@ -188,7 +188,7 @@ async def get_trades(
         )
 
 
-@app.post("/portfolios", tags=["Portfolio"], response_model=None)
+@app.get("/get-private-portfolios", tags=["Portfolio"], response_model=None)
 async def get_private_portfolios(
         args: PortfolioIn = Depends(PortfolioIn),
         db: MongoClient = Depends(get_database),
@@ -288,6 +288,7 @@ async def get_private_portfolios(
         return ResponseOut(
             error=messages.NO_RECORDS_ERROR, result=[], timeGenerated=datetime.now()
         )
+
 
 
 @app.delete("/trades", tags=["Trades"])
