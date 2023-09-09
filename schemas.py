@@ -28,5 +28,12 @@ class CustomersIn(BaseModel):
     modified_date: Optional[date] = Query(alias="ModifiedDate", default=None)
 
 
+class ReconciliationIn(BaseModel):
+    MarketerID: Optional[str] = Query(alias="MarketerID", default=None)
+    start_date: Optional[date] = Query(alias="StartDate", default=None)
+    end_date: Optional[date] = Query(alias="EndDate", default=None)
+
+
+
 class CookieIn(BaseModel):
     cookie_value: str

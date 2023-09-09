@@ -5,7 +5,8 @@ from datetime import datetime
 from logging.config import dictConfig
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Annotated
-from  statics import statics
+from statics import statics
+from queries import *
 import requests
 import uvicorn
 from fastapi import Depends, FastAPI, status, HTTPException
@@ -604,6 +605,188 @@ async def get_customers(
         return ResponseOut(
             error=messages.NO_RECORDS_ERROR, result=[], timeGenerated=datetime.now()
         )
+
+
+@app.get("/reconciliation", tags=["Reconciliation"])
+async def reconciliation(
+    args: ReconciliationIn = Depends(ReconciliationIn),
+    db: MongoClient = Depends(get_database),
+    user: str = Depends(get_current_username),
+):
+    try:
+        response = requests.post(
+            setting.TBS_TRADES_URL,
+            headers=tbs_trades_header(cookie.cookie),
+            data=reconciliation_payload(
+                args.start_date.year, args.start_date.month, args.start_date.day,
+                args.end_date.year, args.end_date.month, args.end_date.day
+            ),
+        )
+
+        response.raise_for_status()
+
+        if "<html>".encode() in response.content:
+            raise Exception()
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=599,
+            content=jsonable_encoder(
+                ResponseOut(
+                    error=messages.CONNECTION_FAILED,
+                    result=[],
+                    timeGenerated=datetime.now(),
+                )
+            ),
+        )
+
+    response = json.loads(response.content)
+    logger.info(f"From {args.start_date} to {args.end_date}, number of records are: {response.get('total')}")
+    temp_trades_coll = db["temptrades"]
+    trades_coll = db[setting.TRADES_COLLECTION]
+    marketer_coll = db[setting.MARKETERS_COLLECTION]
+    customer_coll = db[setting.CUSTOMERS_COLLECTION]
+    if response.get("total", 0) != 0:
+        trade_records = response.get("data")
+        # duplicates = 0
+        # buys = 0
+        # sells = 0
+        # inserted = []
+        try:
+            for trade in trade_records:
+                # total commission
+                trade["TotalCommission"] = trade["TradeItemTotalCommission"]
+
+                # set trade type
+                if trade["TradeSideTitle"] == "فروش":
+                    trade["TradeType"] = 2
+                    # sells += 1
+                else:
+                    trade["TradeType"] = 1
+                    # buys += 1
+
+                # set ISIN
+                trade["MarketInstrumentISIN"] = trade["ISIN"]
+
+                # set symbol
+                trade["TradeSymbol"] = trade["Symbol"]
+                try:
+                    temp_trades_coll.insert_one(trade)
+                    # inserted.append(trade)
+                except DuplicateKeyError as dup_error:
+                    logger.error("Duplicate record", {"error": dup_error})
+                    # duplicates += 1
+                    # if trade["TradeType"] == 2:
+                    #     sells -= 1
+                    # else:
+                    #     buys -= 1
+                logger.info(f"Successfully get trade records of  {args.start_date} to {args.end_date}")
+            if args.MarketerID:
+                marketers = marketer_coll.find_one(
+                    {"Id": args.MarketerID}, {"_id": False}
+                )
+            else:
+                marketerrs = marketer_coll.find(
+                    {"TbsReagentId": {"$exists": True, "$not": {"$size": 0}}}, {"_id": False}
+                )
+                marketers = dict(enumerate(marketerrs))
+            results = []
+            for num in marketers:
+                marketer = marketers[num]
+                query = {"Referer": marketer['TbsReagentName']}
+                fields = {"PAMCode": 1}
+
+                customers_records = customer_coll.find(query, fields)
+                trade_codes = [c.get("PAMCode") for c in customers_records]
+                # gdate = jd.strptime(per, "%Y%m")
+                # from_gregorian_date = gdate.todatetime().isoformat()
+                # to_gregorian_date = (
+                #         datetime.strptime(
+                #             gdate.replace(day=gdate.daysinmonth).todate().isoformat(), "%Y-%m-%d"
+                #         )
+                #         + timedelta(days=1)
+                # ).isoformat()
+
+                pipeline = [
+                    filter_users_stage(trade_codes, args.start_date, args.end_date),
+                    project_commission_stage(),
+                    group_by_total_stage("id"),
+                    project_pure_stage(),
+                ]
+                diff_marketer_total = {"TotalTurnOver": 0, "TotalBrokerCommission": 0}
+                tbs_marketer_total = next(temp_trades_coll.aggregate(pipeline=pipeline),
+                                      {"TotalPureVolume": 0, "TotalFee": 0})
+                db_marketer_total = next(trades_coll.aggregate(pipeline=pipeline),
+                                      {"TotalPureVolume": 0, "TotalFee": 0})
+                if tbs_marketer_total == db_marketer_total:
+                    pass
+                else:
+                    tbs_marketer_total["BuyTradeCount"] = temp_trades_coll.count_documents({"$and": [{"TradeType": 1},{"Referer": marketer['TbsReagentName']}]})
+                    tbs_marketer_total["SellTradeCount"] = temp_trades_coll.count_documents({"$and": [{"TradeType": 2},{"Referer": marketer['TbsReagentName']}]})
+                    db_marketer_total["BuyTradeCount"] = trades_coll.count_documents({"$and": [{"Referer": marketer['TbsReagentName']},{"TradeDate": {"$gte": args.start_date}},{"TradeDate": {"$lte": args.end_date}},{"TradeType": 1}]})
+                    db_marketer_total["SellTradeCount"] = trades_coll.count_documents({"$and": [{"Referer": marketer['TbsReagentName']},{"TradeDate": {"$gte": args.start_date}},{"TradeDate": {"$lte": args.end_date}},{"TradeType": 2}]})
+                    diff_marketer_total["BuyTradeCount"] = db_marketer_total["BuyTradeCount"] - tbs_marketer_total["BuyTradeCount"]
+                    diff_marketer_total["SellTradeCount"] = db_marketer_total["SellTradeCount"] - tbs_marketer_total["SellTradeCount"]
+                    diff_marketer_total["TotalTurnOver"] = db_marketer_total["TotalPureVolume"] - tbs_marketer_total["TotalPureVolume"]
+                    diff_marketer_total["TotalBrokerCommission"] = db_marketer_total["TotalFee"] - tbs_marketer_total["TotalFee"]
+                    reconciliation_report = {
+                        "TBSBuyTradeCount": tbs_marketer_total["BuyTradeCount"],
+                        "APPBuyTradeCount": db_marketer_total["BuyTradeCount"],
+                        "TBSSellTradeCount":tbs_marketer_total["SellTradeCount"],
+                        "APPSellTradeCount": db_marketer_total["SellTradeCount"],
+                        "TBSTotalTradeCount":tbs_marketer_total["BuyTradeCount"]+tbs_marketer_total["SellTradeCount"],
+                        "APPTotalTradeCount":db_marketer_total["BuyTradeCount"]+db_marketer_total["SellTradeCount"],
+                        "APPSumOfActualTotalTurnOver":db_marketer_total["TotalPureVolume"],
+                        "TBSSumOfActualTotalTurnOver":tbs_marketer_total["TotalPureVolume"],
+                        "APPSumOfActualTotalBrokerCommission": db_marketer_total["TotalFee"],
+                        "TBSSumOfActualTotalBrokerCommission": tbs_marketer_total["TotalFee"],
+                        "DiffBuyTradeCount":diff_marketer_total["SellTradeCount"],
+                        "DiffSellTradeCount": diff_marketer_total["SellTradeCount"],
+                        "DiffTotalTradeCount":diff_marketer_total["BuyTradeCount"]+diff_marketer_total["SellTradeCount"],
+                        "DiffSumOfActualTotalTurnOver": diff_marketer_total["TotalTurnOver"],
+                        "DiffSumOfActualTotalBrokerCommission": diff_marketer_total["TotalBrokerCommission"]
+                    }
+                    results.append(reconciliation_report)
+
+            result = {}
+            result["errorCode"] = None
+            result["errorMessage"] = None
+            result["pagedData"] = results
+            resp = {
+                "result": result,
+                "GeneratedDateTime": datetime.now(),
+                "error": {
+                    "message": "Null",
+                    "code": "Null",
+                },
+            }
+            temp_trades_coll.delete_many({})
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp)
+            )
+        except BulkWriteError as e:
+            for error in e.details.get("writeErrors"):
+                if error.get("code") != 11000:
+                    logger.error("Bulk Write Error")
+                    logger.exception("Bulk Write Error")
+                    temp_trades_coll.delete_many({})
+                    return JSONResponse(
+                        status_code=status.HTTP_418_IM_A_TEAPOT,
+                        content=jsonable_encoder(
+                            ResponseOut(
+                                error=messages.BULK_WRITE_ERROR,
+                                result=[],
+                                timeGenerated=datetime.now(),
+                            )
+                        ),
+                    )
+    else:
+        logger.info("No trade record found. List is empty.")
+        temp_trades_coll.delete_many({})
+        return ResponseOut(
+            error=messages.NO_TRADES_ERROR, result=[], timeGenerated=datetime.now()
+        )
+
 
 
 if __name__ == "__main__":

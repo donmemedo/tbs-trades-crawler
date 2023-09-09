@@ -18,6 +18,9 @@ class Setting(BaseSettings):
     FASTAPI_DOCS = "/docs"
     FASTAPI_REDOC = "/redoc"
     APP_NAME = "tbs-trade-crawler"
+    CUSTOMERS_COLLECTION = "customers"
+    TRADES_COLLECTION = "trades"
+    MARKETERS_COLLECTION = "newmarketers"
 
 
 def tbs_trades_header(cookie):
@@ -42,6 +45,18 @@ def tbs_trades_payload(year, month, day):
         f"BranchId=&DateFilter.StartDate={month}%2F{day}"
         f"%2F{year}&DateFilter.EndDate={month}"
         f"%2F{day}%2F{year}"
+        f"&TradeState=All&TradeSide=Both&CustomerType=All&Bourse=All"
+        f"&MaxWage=%D9%87%D8%B1%D8%AF%D9%88&MinWage=%D9%87%D8%B1%D8%AF%D9%88"
+        f"&MarketInstrumentType=All&StockTradeSummaryReportType=Simple&"
+        f"CounterPartyType=NoneOfThem&page=1&start=0&limit=2147483647&FY=24"
+    )
+
+
+def reconciliation_payload(start_year, start_month, start_day, end_year, end_month, end_day):
+    return (
+        f"BranchId=&DateFilter.StartDate={start_month}%2F{start_day}"
+        f"%2F{start_year}&DateFilter.EndDate={end_month}"
+        f"%2F{end_day}%2F{end_year}"
         f"&TradeState=All&TradeSide=Both&CustomerType=All&Bourse=All"
         f"&MaxWage=%D9%87%D8%B1%D8%AF%D9%88&MinWage=%D9%87%D8%B1%D8%AF%D9%88"
         f"&MarketInstrumentType=All&StockTradeSummaryReportType=Simple&"
