@@ -491,7 +491,7 @@ async def get_customers(
         privates = legals = newp = newl = updp = updl = 0
         for record in records:
 
-            if record["PartyTypeTitle"] == statics.NATURAL_USER:
+            if record["PartyTypeTitle"] == statics.PRIVATE_USER:
                 record["CustomerType"] = 1
                 privates += 1
             else:
@@ -509,7 +509,7 @@ async def get_customers(
             if not record["Mobile"]:
                 record["Mobile"] = record["Phones"]
             try:
-                db.customers.insert_one(record)
+                db.customerzs.insert_one(record)
                 if record["CustomerType"] == 1:
                     newp += 1
                 else:
@@ -524,13 +524,13 @@ async def get_customers(
                     )
                     record.pop("_id")
                     if (
-                        db.customers.find_one(
+                        db.customerzs.find_one(
                             {"PAMCode": record.get("PAMCode")}, {"_id": False}
                         )
                         != record
                     ):
-                        db.customers.delete_one({"PAMCode": record.get("PAMCode")})
-                        db.customers.insert_one(record)
+                        db.customerzs.delete_one({"PAMCode": record.get("PAMCode")})
+                        db.customerzs.insert_one(record)
                         if record["CustomerType"] == 1:
                             updp += 1
                         else:
