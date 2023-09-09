@@ -83,7 +83,7 @@ async def get_cookie():
     return cookie.cookie
 
 
-@app.get("/BAK/trades", tags=["TradesBAK"])
+@app.get("/BAK/trades", tags=["BAK"])
 async def get_trades(
     args: TradesIn = Depends(TradesIn),
     db: MongoClient = Depends(get_database),
@@ -187,7 +187,7 @@ async def get_trades(
         )
 
 
-@app.get("/BAK/get-private-portfolios", tags=["Portfolio"], response_model=None)
+@app.get("/BAK/get-private-portfolios", tags=["BAK"], response_model=None)
 async def get_private_portfolios(
     args: PortfolioIn = Depends(PortfolioIn),
     db: MongoClient = Depends(get_database),
@@ -295,7 +295,7 @@ async def get_private_portfolios(
         )
 
 
-@app.delete("/trades")
+@app.delete("/trades", tags=["Trades"])
 def delete_trades(
     args: DeleteTradesIn = Depends(DeleteTradesIn),
     db: MongoClient = Depends(get_database),
