@@ -5,7 +5,7 @@ from datetime import datetime
 from logging.config import dictConfig
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Annotated
-
+from  statics import statics
 import requests
 import uvicorn
 from fastapi import Depends, FastAPI, status, HTTPException
@@ -18,7 +18,7 @@ import messages
 from config import *
 from database import get_database
 from logger import log_config, logger
-from schemas import ResponseOut, TradesIn, DeleteTradesIn, PortfolioIn
+from schemas import *
 from khayyam import JalaliDatetime
 
 app = FastAPI(
@@ -63,11 +63,31 @@ def get_current_username(
     return credentials.username
 
 
-@app.get("/get-trade_records", tags=["Trades"])
-async def trades(
-        args: TradesIn = Depends(TradesIn),
-        db: MongoClient = Depends(get_database),
-        user: str = Depends(get_current_username)
+class Cookie:
+    def __init__(self, cookie_value=None):
+        self.cookie = cookie_value
+
+
+cookie = Cookie()
+
+
+@app.post("/cookie", tags=["Cookie"])
+async def set_cookie(args: CookieIn = Depends(CookieIn)):
+    cookie.cookie = args.cookie_value
+
+    return cookie.cookie
+
+
+@app.get("/cookie", tags=["Cookie"])
+async def get_cookie():
+    return cookie.cookie
+
+
+@app.get("/BAK/trades", tags=["TradesBAK"])
+async def get_trades(
+    args: TradesIn = Depends(TradesIn),
+    db: MongoClient = Depends(get_database),
+    user: str = Depends(get_current_username),
 ):
     try:
         response = requests.post(
@@ -167,11 +187,11 @@ async def trades(
         )
 
 
-@app.get("/get-private-portfolios", tags=["Portfolio"], response_model=None)
+@app.get("/BAK/get-private-portfolios", tags=["Portfolio"], response_model=None)
 async def get_private_portfolios(
-        args: PortfolioIn = Depends(PortfolioIn),
-        db: MongoClient = Depends(get_database),
-        user: str = Depends(get_current_username)
+    args: PortfolioIn = Depends(PortfolioIn),
+    db: MongoClient = Depends(get_database),
+    user: str = Depends(get_current_username),
 ):
     try:
         response = requests.get(
@@ -206,11 +226,13 @@ async def get_private_portfolios(
         for record in records:
             try:
                 db.portfolio.insert_one(record)
-                logger.info(f"Successfully get Private Portfolios in {datetime.now().isoformat()} ")
+                logger.info(
+                    f"Successfully get Private Portfolios in {datetime.now().isoformat()} "
+                )
             except DuplicateKeyError as e:
                 if e.details.get("code") == 11000:
                     logger.error(f"Duplicate Key Error for {record.get('Title')}")
-                    db.portfolio.delete_one({"TradeCodes": record.get('TradeCodes')})
+                    db.portfolio.delete_one({"TradeCodes": record.get("TradeCodes")})
                     db.portfolio.insert_one(record)
                     record.pop("_id")
                     results.append(record)
@@ -246,7 +268,9 @@ async def get_private_portfolios(
                 },
             }
 
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp))
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp)
+            )
         else:
             result["errorCode"] = None
             result["errorMessage"] = messages.SUCCESSFULLY_WRITE_DATA
@@ -261,7 +285,9 @@ async def get_private_portfolios(
                 },
             }
 
-            return JSONResponse(status_code=status.HTTP_201_CREATED, content=jsonable_encoder(resp))
+            return JSONResponse(
+                status_code=status.HTTP_201_CREATED, content=jsonable_encoder(resp)
+            )
     else:
         logger.info("No records found. List is empty.")
         return ResponseOut(
@@ -273,40 +299,38 @@ async def get_private_portfolios(
 def delete_trades(
     args: DeleteTradesIn = Depends(DeleteTradesIn),
     db: MongoClient = Depends(get_database),
-    user: str = Depends(get_current_username)
+    user: str = Depends(get_current_username),
 ):
     try:
         db.trades.delete_many(
-            {
-                "TradeDate": {
-                    "$regex": args.trade_date.strftime(setting.DATE_STRING)
-                }
-            }
+            {"TradeDate": {"$regex": args.trade_date.strftime(setting.DATE_STRING)}}
         )
         logger.info(f"All trades has been deleted for {args.trade_date}")
-        return ResponseOut(error="داده‌ها با موفقیت از سیستم حذف شد",
-                           result=[],
-                           timeGenerated=datetime.now()
-                           )
+        return ResponseOut(
+            error="داده‌ها با موفقیت از سیستم حذف شد",
+            result=[],
+            timeGenerated=datetime.now(),
+        )
     except Exception:
         logger.error("Error while delete data in database")
         logger.exception("Error while delete data in database")
-        return jsonable_encoder(JSONResponse(
-            status_code=500,
-            content=ResponseOut(
-                error=messages.HTTP_500_ERROR,
-                result=[],
-                timeGenerated=datetime.now()
+        return jsonable_encoder(
+            JSONResponse(
+                status_code=500,
+                content=ResponseOut(
+                    error=messages.HTTP_500_ERROR,
+                    result=[],
+                    timeGenerated=datetime.now(),
+                ),
             )
         )
-    )
 
 
-@app.get("/backups/get-trade_records", tags=["Backups"])
-async def backup_trades(
-        args: TradesIn = Depends(TradesIn),
-        db: MongoClient = Depends(get_database),
-        user: str = Depends(get_current_username)
+@app.get("/trades", tags=["Trades"])
+async def get_trades(
+    args: TradesIn = Depends(TradesIn),
+    db: MongoClient = Depends(get_database),
+    user: str = Depends(get_current_username),
 ):
     try:
         response = requests.post(
@@ -380,7 +404,9 @@ async def backup_trades(
             result["errorMessage"] = None
             result["InsertedBuyTradeCount"] = buys
             result["InsertedSellTradeCount"] = sells
-            result["InsertedTradeCodeCount"] = len({v['TradeCode']: v for v in inserted})
+            result["InsertedTradeCodeCount"] = len(
+                {v["TradeCode"]: v for v in inserted}
+            )
             result["TradeDate"] = JalaliDatetime.now().date().isoformat()
             resp = {
                 "result": result,
@@ -391,19 +417,9 @@ async def backup_trades(
                 },
             }
 
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp))
-
             return JSONResponse(
-                    status_code=status.HTTP_201_CREATED,
-                    content=jsonable_encoder(
-                        ResponseOut(
-                            error=messages.SUCCESSFULLY_WRITE_DATA,
-                            result=[],
-                            timeGenerated=datetime.now(),
-                        )
-                    ),
-                )
-
+                status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp)
+            )
         except BulkWriteError as e:
             for error in e.details.get("writeErrors"):
                 if error.get("code") != 11000:
@@ -426,17 +442,27 @@ async def backup_trades(
         )
 
 
-@app.get("/backups/get-customers", tags=["Backups"], response_model=None)
+@app.get("/customers", tags=["Customers"], response_model=None)
 async def get_customers(
-        args: PortfolioIn = Depends(PortfolioIn),
-        db: MongoClient = Depends(get_database),
-        user: str = Depends(get_current_username)
+    args: CustomersIn = Depends(CustomersIn),
+    db: MongoClient = Depends(get_database),
+    user: str = Depends(get_current_username),
 ):
+    if args.register_date:
+        register_date = args.register_date.strftime(statics.DATE_FORMAT)
+    else:
+        register_date = None
+
+    if args.modified_date:
+        modified_date = args.modified_date.strftime(statics.DATE_FORMAT)
+    else:
+        modified_date = None
+
     try:
         response = requests.get(
             setting.TBS_CUSTOMERS_URL,
-            params=tbs_customer_params(),
-            headers=tbs_customer_header(args.cookie),
+            params=tbs_customer_filter_params(register_date, modified_date),
+            headers=tbs_customer_header(cookie.cookie),
         )
 
         response.raise_for_status()
@@ -462,11 +488,10 @@ async def get_customers(
     if response.get("total", 0) != 0:
         records = response.get("data")
         results = []
-        privates, legals, newp, newl, updp, updl = 0,0,0,0,0,0
-        # legals = 0
+        privates = legals = newp = newl = updp = updl = 0
         for record in records:
-            # set trade type
-            if record["PartyTypeTitle"] == "حقیقی":
+
+            if record["PartyTypeTitle"] == statics.NATURAL_USER:
                 record["CustomerType"] = 1
                 privates += 1
             else:
@@ -489,13 +514,22 @@ async def get_customers(
                     newp += 1
                 else:
                     newl += 1
-                logger.info(f"Successfully get Customers in {datetime.now().isoformat()} ")
+                logger.info(
+                    f"Successfully get Customers in {datetime.now().isoformat()} "
+                )
             except DuplicateKeyError as e:
                 if e.details.get("code") == 11000:
-                    logger.error(f"Duplicate Key Error for {record.get('FirstName')} {record.get('LastName')}")
+                    logger.error(
+                        f"Duplicate Key Error for {record.get('FirstName')} {record.get('LastName')}"
+                    )
                     record.pop("_id")
-                    if db.customers.find_one({"PAMCode": record.get('PAMCode')},{"_id": False}) != record:
-                        db.customers.delete_one({"PAMCode": record.get('PAMCode')})
+                    if (
+                        db.customers.find_one(
+                            {"PAMCode": record.get("PAMCode")}, {"_id": False}
+                        )
+                        != record
+                    ):
+                        db.customers.delete_one({"PAMCode": record.get("PAMCode")})
                         db.customers.insert_one(record)
                         if record["CustomerType"] == 1:
                             updp += 1
@@ -503,7 +537,9 @@ async def get_customers(
                             updl += 1
                         record.pop("_id")
                         results.append(record)
-                        logger.info(f"Record {record.get('FirstName')} {record.get('LastName')} was Updated")
+                        logger.info(
+                            f"Record {record.get('FirstName')} {record.get('LastName')} was Updated"
+                        )
                 else:
                     logger.error("Bulk Write Error")
                     logger.exception("Bulk Write Error")
@@ -539,7 +575,9 @@ async def get_customers(
                 },
             }
 
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp))
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder(resp)
+            )
         else:
             result["errorCode"] = None
             result["errorMessage"] = messages.SUCCESSFULLY_WRITE_DATA
@@ -558,7 +596,9 @@ async def get_customers(
                 },
             }
 
-            return JSONResponse(status_code=status.HTTP_201_CREATED, content=jsonable_encoder(resp))
+            return JSONResponse(
+                status_code=status.HTTP_201_CREATED, content=jsonable_encoder(resp)
+            )
     else:
         logger.info("No records found. List is empty.")
         return ResponseOut(
