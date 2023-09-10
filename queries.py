@@ -10,6 +10,17 @@ def filter_users_stage(trade_codes, from_gregorian_date, to_gregorian_date):
     }
 
 
+def filter_trades(trade_codes, from_gregorian_date, to_gregorian_date, trade_type):
+    return {
+        "$and": [
+            {"TradeCode": {"$in": trade_codes}},
+            {"TradeDate": {"$gte": from_gregorian_date}},
+            {"TradeDate": {"$lte": to_gregorian_date}},
+            {"TradeType": trade_type},
+        ]
+    }
+
+
 def project_commission_stage():
     return {
         "$project": {

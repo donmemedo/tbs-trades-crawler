@@ -34,6 +34,5 @@ class ReconciliationIn(BaseModel):
     end_date: Optional[date] = Query(alias="EndDate", default=None)
 
 
-
 class CookieIn(BaseModel):
     cookie_value: str

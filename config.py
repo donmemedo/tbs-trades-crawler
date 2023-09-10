@@ -20,7 +20,7 @@ class Setting(BaseSettings):
     APP_NAME = "tbs-trade-crawler"
     CUSTOMERS_COLLECTION = "customers"
     TRADES_COLLECTION = "trades"
-    MARKETERS_COLLECTION = "newmarketers"
+    MARKETERS_COLLECTION = "newmarketersss"
 
 
 def tbs_trades_header(cookie):
@@ -52,7 +52,9 @@ def tbs_trades_payload(year, month, day):
     )
 
 
-def reconciliation_payload(start_year, start_month, start_day, end_year, end_month, end_day):
+def reconciliation_payload(
+    start_year, start_month, start_day, end_year, end_month, end_day
+):
     return (
         f"BranchId=&DateFilter.StartDate={start_month}%2F{start_day}"
         f"%2F{start_year}&DateFilter.EndDate={end_month}"
@@ -95,7 +97,7 @@ def tbs_customer_header(cookie):
     return {
         "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.5",
-        'Accept-Encoding': 'gzip, deflate, br',
+        "Accept-Encoding": "gzip, deflate, br",
         "X-Requested-With": "XMLHttpRequest",
         "Connection": "keep-alive",
         "Referer": "https://tbs.onlinetavana.ir/CustomerManagement/Customer?tradeSystem=TSETradingSystem",
@@ -105,7 +107,7 @@ def tbs_customer_header(cookie):
         "Sec-Fetch-Mode": "cors",
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
         "X-Requested-With": "XMLHttpRequest",
-        "Sec-Fetch-Site": "same-origin"
+        "Sec-Fetch-Site": "same-origin",
     }
 
 
@@ -126,21 +128,27 @@ def tbs_customer_params():
 
 def tbs_customer_filter_params(register_date=None, modified_date=None):
     response = {
-        '_dc': '1688973946480',
-        'action': 'read',
-        'Filter.TradeSystem': 'TSETradingSystem',
-        'Filter.ShowFastList': 'false',
-        'page': '1',
-        'start': '0',
-        'limit': '80000',
-        'sort': '[{"property":"TradeCodes","direction":"ASC"}]',
-        'FY': '24',
+        "_dc": "1688973946480",
+        "action": "read",
+        "Filter.TradeSystem": "TSETradingSystem",
+        "Filter.ShowFastList": "false",
+        "page": "1",
+        "start": "0",
+        "limit": "80000",
+        "sort": '[{"property":"TradeCodes","direction":"ASC"}]',
+        "FY": "24",
     }
 
     if register_date:
-        response['filterheader'] = '{"RegisterDate": {"type": "date", "op": "=", "value": "' + register_date + '"}}'
+        response["filterheader"] = (
+            '{"RegisterDate": {"type": "date", "op": "=", "value": "'
+            + register_date
+            + '"}}'
+        )
     elif modified_date:
-        response['filterheader'] = '{"ModifiedDate":{"type":"date","op":"=","value":"' + modified_date + '"}}'
+        response["filterheader"] = (
+            '{"ModifiedDate":{"type":"date","op":"=","value":"' + modified_date + '"}}'
+        )
 
     return response
 
