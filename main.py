@@ -115,7 +115,7 @@ async def get_trades(
                 )
             ),
         )
-
+    trades_coll = db[setting.TRADES_COLLECTION]
     response = json.loads(response.content)
     logger.info(f"On {args.trade_date}, number of records are: {response.get('total')}")
 
@@ -139,7 +139,7 @@ async def get_trades(
             trade["TradeSymbol"] = trade.pop("Symbol")
 
         try:
-            db.trades.insert_many(trade_records)
+            trades_coll.insert_many(trade_records)
             logger.info(f"Successfully get trade records of  {args.trade_date}")
 
             return JSONResponse(
@@ -358,7 +358,7 @@ async def get_trades(
                 )
             ),
         )
-
+    trades_coll = db[setting.TRADES_COLLECTION]
     response = json.loads(response.content)
     logger.info(f"On {args.trade_date}, number of records are: {response.get('total')}")
 
@@ -387,7 +387,7 @@ async def get_trades(
                 # set symbol
                 trade["TradeSymbol"] = trade["Symbol"]
                 try:
-                    db.tradesbackup.insert_one(trade)
+                    trades_coll.insert_one(trade)
                     inserted.append(trade)
                 except DuplicateKeyError as dup_error:
                     logger.info("Duplicate record", {"error": dup_error})
@@ -482,7 +482,7 @@ async def get_customers(
                 )
             ),
         )
-
+    customer_coll = db[setting.CUSTOMERS_COLLECTION]
     response = json.loads(response.content)
     logger.info(f"Number of records are: {response.get('total')}")
 
@@ -509,7 +509,7 @@ async def get_customers(
             if not record["Mobile"]:
                 record["Mobile"] = record["Phones"]
             try:
-                db.customerzs.insert_one(record)
+                customer_coll.insert_one(record)
                 if record["CustomerType"] == 1:
                     newp += 1
                 else:
@@ -524,13 +524,13 @@ async def get_customers(
                     )
                     record.pop("_id")
                     if (
-                        db.customerzs.find_one(
+                        customer_coll.find_one(
                             {"PAMCode": record.get("PAMCode")}, {"_id": False}
                         )
                         != record
                     ):
-                        db.customerzs.delete_one({"PAMCode": record.get("PAMCode")})
-                        db.customerzs.insert_one(record)
+                        customer_coll.delete_one({"PAMCode": record.get("PAMCode")})
+                        customer_coll.insert_one(record)
                         if record["CustomerType"] == 1:
                             updp += 1
                         else:

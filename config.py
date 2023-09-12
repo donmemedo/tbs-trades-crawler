@@ -2,7 +2,7 @@ from pydantic import BaseSettings
 
 
 class Setting(BaseSettings):
-    MONGO_CONNECTION_STRING = "mongodb://root:1qaz1qaz@localhost:27017/"
+    MONGO_CONNECTION_STRING = "mongodb://root:root@172.24.65.105:30001/"
     MONGO_DATABASE = "brokerage"
     TBS_TRADES_URL = "https://tbs.onlinetavana.ir/ClearingSettlement/ClrsReport/StockTradeSummaryAjaxLoadGrid?_dc=1687751713895&action=read"
     TBS_PORTFOLIOS_URL = (
