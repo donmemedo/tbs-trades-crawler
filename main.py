@@ -93,7 +93,7 @@ async def get_trades(
     try:
         response = requests.post(
             setting.TBS_TRADES_URL,
-            headers=tbs_trades_header(args.cookie),
+            headers=tbs_trades_header(cookie.cookie),
             data=tbs_trades_payload(
                 args.trade_date.year, args.trade_date.month, args.trade_date.day
             ),
@@ -198,7 +198,7 @@ async def get_private_portfolios(
         response = requests.get(
             setting.TBS_PORTFOLIOS_URL,
             params=tbs_portfolio_params(),
-            headers=tbs_portfolio_header(args.cookie),
+            headers=tbs_portfolio_header(cookie.cookie),
         )
 
         response.raise_for_status()
@@ -336,7 +336,7 @@ async def get_trades(
     try:
         response = requests.post(
             setting.TBS_TRADES_URL,
-            headers=tbs_trades_header(args.cookie),
+            headers=tbs_trades_header(cookie.cookie),
             data=tbs_trades_payload(
                 args.trade_date.year, args.trade_date.month, args.trade_date.day
             ),

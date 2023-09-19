@@ -6,7 +6,7 @@ from fastapi import Query
 
 class TradesIn(BaseModel):
     trade_date: date = Query(alias="TradeDate")
-    cookie: str = Query(alias="Cookie")
+    # cookie: str = Query(alias="Cookie")
 
 
 class PortfolioIn(BaseModel):
